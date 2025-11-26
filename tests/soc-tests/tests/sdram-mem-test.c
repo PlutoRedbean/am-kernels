@@ -1,6 +1,6 @@
 #include "trap.h"
 
-#define START_ADDR 0xa0000000
+#define START_ADDR 0xa0100000
 #define MEM_SIZE   0x2000000
 #define END_ADDR   START_ADDR + MEM_SIZE
 
