@@ -1,0 +1,6 @@
+[submodule "riscv-arch-test-am"]
+	path = riscv-arch-test-am
+	url = git@github.com:NJU-ProjectN/riscv-arch-test-am.git
+[submodule "riscv-tests-am"]
+	path = riscv-tests-am
+	url = git@github.com:NJU-ProjectN/riscv-tests-am.git
