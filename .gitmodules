@@ -4,3 +4,9 @@
 [submodule "riscv-tests-am"]
 	path = tests/riscv-tests-am
 	url = git@github.com:NJU-ProjectN/riscv-tests-am.git
+[submodule "tests/riscv-tests-am"]
+	path = tests/riscv-tests-am
+	url = git@github.com:NJU-ProjectN/riscv-tests-am.git
+[submodule "tests/riscv-arch-test-am"]
+	path = tests/riscv-arch-test-am
+	url = git@github.com:NJU-ProjectN/riscv-arch-test-am.git
