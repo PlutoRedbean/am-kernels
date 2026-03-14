@@ -1,3 +1,4 @@
+include $(MUNDUS_HOME)/common.mk
 .PHONY: all run gdb clean latest $(ALL)
 
 RESULT = .result
