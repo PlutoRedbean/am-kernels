@@ -1,0 +1,6 @@
+!data/
+!data/**
+!tools/
+!tools/*.py
+tools/__pycache__/
+tools/**/*.pyc
