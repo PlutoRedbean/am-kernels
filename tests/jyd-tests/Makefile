@@ -17,25 +17,29 @@ endif
 
 TRUE_VALUES := 1 y yes true
 RV32M_ENABLED := $(filter $(TRUE_VALUES),$(USE_RV32M))
-PURE_ENABLED := $(filter $(TRUE_VALUES),$(PURE))
+PURE_ENABLED  := $(filter $(TRUE_VALUES),$(PURE))
 BUILD_TAG := $(CASE_TAG)$(if $(RV32M_ENABLED),_rv32m,)$(if $(PURE_ENABLED),_pure,)
 
 IROM_COE  := $(CASE_DIR)/irom.coe
 DRAM_COE  := $(CASE_DIR)/dram.coe
 HAS_DRAM  := $(wildcard $(DRAM_COE))
 
-IROM_ASM_SRC := $(BUILD_DIR)/$(BUILD_TAG)_irom_data.S
-IROM_BIN     := $(BUILD_DIR)/$(BUILD_TAG)_irom_data.bin
+IROM_ASM_SRC    := $(BUILD_DIR)/$(BUILD_TAG)_irom_data.S
+IROM_BIN        := $(BUILD_DIR)/$(BUILD_TAG)_irom_data.bin
 IROM_RAW_DISASM := $(BUILD_DIR)/$(BUILD_TAG)_irom_data.raw.asm
-IROM_DISASM  := $(BUILD_DIR)/$(BUILD_TAG)_irom_data.asm
-DRAM_BIN     := $(BUILD_DIR)/$(BUILD_TAG)_dram_data.bin
-IMAGE_BIN    := $(BUILD_DIR)/$(BUILD_TAG)_jyd_image.bin
+IROM_DISASM     := $(BUILD_DIR)/$(BUILD_TAG)_irom_data.asm
+DRAM_BIN        := $(BUILD_DIR)/$(BUILD_TAG)_dram_data.bin
+IMAGE_BIN       := $(BUILD_DIR)/$(BUILD_TAG)_jyd_image.bin
 
-COE2IMAGE := python3 $(AM_HOME)/tools/coe2image.py
-PATCH_SOFT_M := python3 $(WORK_DIR)/tools/patch_soft_m.py
-EBREAK_WORD  ?= 0x00100073
+COE2IMAGE_SCRIPT := $(AM_HOME)/tools/coe2image.py
+COE2IMAGE        := python3 $(COE2IMAGE_SCRIPT)
+
+PATCH_SOFT_M_SCRIPT := $(WORK_DIR)/tools/patch_soft_m.py
+PATCH_SOFT_M        := python3 $(PATCH_SOFT_M_SCRIPT)
+
+EBREAK_WORD    ?= 0x00100073
 SELF_LOOP_WORD ?= 0x0000006f
-DRAM_OFFSET  ?= 0x100000
+DRAM_OFFSET    ?= 0x100000
 
 CROSS_COMPILE ?= riscv32-unknown-linux-gnu-
 OBJDUMP       := $(CROSS_COMPILE)objdump
@@ -49,6 +53,10 @@ NPC_BUILD_DIR := $(NPC_HOME)/build
 NPCFLAGS      += --diff=$(NEMU_HOME)/build/riscv32-nemu-interpreter-so
 NPCFLAGS      += --log=$(NPC_BUILD_DIR)/jyd-log.txt
 NPCFLAGS      += --csv=$(NPC_BUILD_DIR)/mtrace.csv
+
+MAKE_DEPS := $(MAKEFILE_LIST)
+
+CONFIG_FILE := $(BUILD_DIR)/$(BUILD_TAG).config
 
 .PHONY: all image asm run clean cases
 
@@ -65,7 +73,34 @@ cases:
 $(BUILD_DIR):
 	@mkdir -p $@
 
-$(IROM_ASM_SRC) $(IROM_BIN) $(IROM_RAW_DISASM): $(IROM_COE) $(AM_HOME)/tools/coe2image.py | $(BUILD_DIR)
+$(CONFIG_FILE): $(MAKE_DEPS) | $(BUILD_DIR)
+	@tmp="$@.tmp"; \
+	{ \
+		echo "CASE=$(CASE)"; \
+		echo "CASE_DIR=$(CASE_DIR)"; \
+		echo "CASE_TAG=$(CASE_TAG)"; \
+		echo "USE_RV32M=$(USE_RV32M)"; \
+		echo "PURE=$(PURE)"; \
+		echo "EBREAK_WORD=$(EBREAK_WORD)"; \
+		echo "SELF_LOOP_WORD=$(SELF_LOOP_WORD)"; \
+		echo "DRAM_OFFSET=$(DRAM_OFFSET)"; \
+		echo "CROSS_COMPILE=$(CROSS_COMPILE)"; \
+		echo "OBJDUMP=$(OBJDUMP)"; \
+		echo "RESET_PC=$(RESET_PC)"; \
+		echo "COE2IMAGE_SCRIPT=$(COE2IMAGE_SCRIPT)"; \
+		echo "PATCH_SOFT_M_SCRIPT=$(PATCH_SOFT_M_SCRIPT)"; \
+	} > "$$tmp"; \
+	if ! cmp -s "$$tmp" "$@"; then \
+		mv "$$tmp" "$@"; \
+	else \
+		rm "$$tmp"; \
+	fi
+
+$(IROM_ASM_SRC) $(IROM_BIN) $(IROM_RAW_DISASM) &: \
+	$(IROM_COE) \
+	$(COE2IMAGE_SCRIPT) \
+	$(PATCH_SOFT_M_SCRIPT) \
+	$(CONFIG_FILE) | $(BUILD_DIR)
 	@echo + COE2IMAGE $<
 	@$(COE2IMAGE) \
 		--input $< \
@@ -87,7 +122,7 @@ $(IROM_ASM_SRC) $(IROM_BIN) $(IROM_RAW_DISASM): $(IROM_COE) $(AM_HOME)/tools/coe
 		$(PATCH_SOFT_M) --binary $(IROM_BIN) --base $(RESET_PC); \
 	fi
 
-$(DRAM_BIN): $(DRAM_COE) $(AM_HOME)/tools/coe2image.py | $(BUILD_DIR)
+$(DRAM_BIN): $(DRAM_COE) $(COE2IMAGE_SCRIPT) $(CONFIG_FILE) | $(BUILD_DIR)
 	@echo + COE2IMAGE $<
 	@$(COE2IMAGE) \
 		--input $< \
@@ -97,7 +132,7 @@ $(DRAM_BIN): $(DRAM_COE) $(AM_HOME)/tools/coe2image.py | $(BUILD_DIR)
 		--symbol dram_data \
 		--data-only
 
-$(IMAGE_BIN): $(IROM_BIN) $(if $(HAS_DRAM),$(DRAM_BIN),) | $(BUILD_DIR)
+$(IMAGE_BIN): $(IROM_BIN) $(if $(HAS_DRAM),$(DRAM_BIN),) $(CONFIG_FILE) | $(BUILD_DIR)
 	@echo + PACK "->" $(patsubst $(WORK_DIR)/%,%,$@)
 	@truncate -s $$(( $(DRAM_OFFSET) )) $@
 	@dd if=$(IROM_BIN) of=$@ bs=1 seek=0 conv=notrunc status=none
@@ -105,7 +140,7 @@ $(IMAGE_BIN): $(IROM_BIN) $(if $(HAS_DRAM),$(DRAM_BIN),) | $(BUILD_DIR)
 		dd if=$(DRAM_BIN) of=$@ bs=1 seek=$$(( $(DRAM_OFFSET) )) conv=notrunc status=none; \
 	fi
 
-$(IROM_DISASM): $(IROM_BIN) | $(BUILD_DIR)
+$(IROM_DISASM): $(IROM_BIN) $(CONFIG_FILE) | $(BUILD_DIR)
 	@echo + OBJDUMP "->" $(patsubst $(WORK_DIR)/%,%,$@)
 	@$(OBJDUMP) -D -b binary -m riscv:rv32 --adjust-vma=$(RESET_PC) $< > $@
 
